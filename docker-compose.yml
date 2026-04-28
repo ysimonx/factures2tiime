@@ -1,0 +1,12 @@
+services:
+  factures2tiime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: factures2tiime
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    platform: linux/arm64

@@ -14,6 +14,7 @@ def get_enabled_providers() -> list[InvoiceProvider]:
     from providers.alan_mail import AlanMailProvider
     from providers.mailjet_mail import MailjetMailProvider
     from providers.anthropic_mail import AnthropicMailProvider
+    from providers.certigna_mail import CertignaMailProvider
     from providers.stubs import (
         GoogleWorkspaceStub, AppleStub, AnthropicStub,
         AlanStub, MailjetStub, YoutubeStub,
@@ -32,6 +33,7 @@ def get_enabled_providers() -> list[InvoiceProvider]:
         AlanMailProvider(),
         MailjetMailProvider(),
         AnthropicMailProvider(),
+        CertignaMailProvider(),
         GoogleWorkspaceStub(),
         AppleStub(),
         AnthropicStub(),

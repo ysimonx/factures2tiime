@@ -27,7 +27,7 @@ def get_valid_token(
     if not data:
         raise OAuthExpiredError(
             f"No stored token for {provider}. "
-            f"Run scripts/setup_qonto.py to authorize."
+            f"Run scripts/setup_{provider}.py to authorize."
         )
 
     if not token_store.is_expired(data):
@@ -54,7 +54,7 @@ def get_valid_token(
         if e.response is not None and e.response.status_code in (400, 401):
             raise OAuthExpiredError(
                 f"Refresh token expired for {provider}. "
-                f"Re-run scripts/setup_qonto.py to re-authorize."
+                f"Re-run scripts/setup_{provider}.py to re-authorize."
             ) from e
         raise
 

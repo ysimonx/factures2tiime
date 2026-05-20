@@ -1,8 +1,9 @@
-rm -Rf ./venv 
+rm -Rf ./venv
 python3.14 -m venv ./venv
 source ./venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
 playwright install chromium
 rm .env
-echo "truc" > .env
+ln -s /Users/ysimonx/Documents/secrets/factures2time/env ./.env
 python scripts/run_now.py

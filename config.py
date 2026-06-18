@@ -69,8 +69,9 @@ STARLINK_EMAIL = os.getenv("STARLINK_EMAIL")
 STARLINK_PASS = os.getenv("STARLINK_PASS")
 
 # ─── Storage ───
-DB_PATH = BASE_DIR / "data" / "factures.db"
-PDF_DIR = BASE_DIR / "data" / "pdfs"
+DATA_DIR = Path(os.getenv("DATA_DIR", BASE_DIR / "data")).expanduser()
+DB_PATH = DATA_DIR / "factures.db"
+PDF_DIR = DATA_DIR / "pdfs"
 
 
 def validate_config() -> list[str]:

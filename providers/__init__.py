@@ -16,8 +16,11 @@ def get_enabled_providers() -> list[InvoiceProvider]:
     from providers.anthropic_mail import AnthropicMailProvider
     from providers.certigna_mail import CertignaMailProvider
     from providers.clockify_mail import ClockifyMailProvider
+    from providers.apple_mail import AppleMailProvider
+    from providers.izivia_mail import IziviaMailProvider
+    from providers.pokawa_mail import PokawaMailProvider
     from providers.stubs import (
-        GoogleWorkspaceStub, AppleStub, AnthropicStub,
+        GoogleWorkspaceStub, AnthropicStub,
         AlanStub, MailjetStub, YoutubeStub,
     )
 
@@ -36,8 +39,10 @@ def get_enabled_providers() -> list[InvoiceProvider]:
         AnthropicMailProvider(),
         CertignaMailProvider(),
         ClockifyMailProvider(),
+        AppleMailProvider(),
+        IziviaMailProvider(),
+        PokawaMailProvider(),
         GoogleWorkspaceStub(),
-        AppleStub(),
         AnthropicStub(),
         AlanStub(),
         MailjetStub(),
@@ -51,5 +56,14 @@ def get_enabled_providers() -> list[InvoiceProvider]:
     if config.STARLINK_ENABLED:
         from providers.starlink import StarlinkProvider
         candidates.append(StarlinkProvider())
+    if config.YOUPRICE_ENABLED:
+        from providers.youprice import YoupriceProvider
+        candidates.append(YoupriceProvider())
+    if config.SOSH_ENABLED:
+        from providers.sosh import SoshProvider
+        candidates.append(SoshProvider())
+    if config.QONTO_ATTACHMENTS_ENABLED:
+        from providers.qonto_attachments import QontoAttachmentsProvider
+        candidates.append(QontoAttachmentsProvider())
 
     return [p for p in candidates if p.is_enabled()]

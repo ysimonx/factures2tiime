@@ -11,6 +11,10 @@ from providers.base import Invoice, InvoiceProvider, ProviderError
 log = logging.getLogger(__name__)
 
 _BASE = "https://api.scaleway.com/billing/v2beta1"
+_PAGE_SIZE = 100
+# Cancelled invoices keep an entry but carry no issue date and a zero total —
+# they are not documents to forward to the accountant.
+_SKIPPED_STATES = {"voided"}
 
 
 def _extract_amount(val) -> float:
@@ -19,6 +23,37 @@ def _extract_amount(val) -> float:
         nanos = float(val.get("nanos") or 0)
         return units + nanos / 1e9
     return float(val or 0)
+
+
+def _parse_item(item: dict, provider: str) -> Invoice | None:
+    """Turn an API entry into an Invoice, or None when it is not billable."""
+    state = (item.get("state") or "").lower()
+    if state in _SKIPPED_STATES:
+        log.debug("Scaleway: skipping %s invoice %s", state, item.get("id"))
+        return None
+
+    # The key is present but null on non-issued invoices, so `.get(k, "")`
+    # would still hand back None — hence the `or ""`.
+    issued = (item.get("issued_date") or "")[:10]
+    try:
+        bill_date = date.fromisoformat(issued)
+    except ValueError:
+        log.debug(
+            "Scaleway: skipping invoice %s with no usable issued_date (%r, state=%s)",
+            item.get("id"), item.get("issued_date"), state or "?",
+        )
+        return None
+
+    return Invoice(
+        provider=provider,
+        invoice_id=item["id"],
+        issue_date=bill_date,
+        amount=_extract_amount(item.get("total_taxed", 0)),
+        currency="EUR",
+        pdf_url=None,
+        pdf_path=None,
+        raw=item,
+    )
 
 
 class ScalewayProvider(InvoiceProvider):
@@ -42,36 +77,25 @@ class ScalewayProvider(InvoiceProvider):
                         "organization_id": config.SCW_ORG_ID,
                         "billing_period_start_after": since.isoformat() + "T00:00:00Z",
                         "page": page,
-                        "page_size": 100,
+                        "page_size": _PAGE_SIZE,
                         "order_by": "issued_date_desc",
                     },
                     timeout=30,
                 )
                 resp.raise_for_status()
             except Exception as e:
-                raise ProviderError(self.name, f"Failed to list invoices: {e}")
+                raise ProviderError(self.name, f"Failed to list invoices: {e}") from e
 
             data = resp.json()
-            items = data.get("invoices", [])
-            for item in items:
-                issued = item.get("issued_date", "")[:10]
-                try:
-                    bill_date = date.fromisoformat(issued)
-                except ValueError:
-                    continue
-                invoices.append(Invoice(
-                    provider=self.name,
-                    invoice_id=item["id"],
-                    issue_date=bill_date,
-                    amount=_extract_amount(item.get("total_taxed", 0)),
-                    currency="EUR",
-                    pdf_url=None,
-                    pdf_path=None,
-                    raw=item,
-                ))
+            items = data.get("invoices") or []
+            invoices.extend(
+                inv for item in items if (inv := _parse_item(item, self.name))
+            )
 
-            total = data.get("total_count", 0)
-            if page * 100 >= total:
+            # An empty page ends the walk even if total_count disagrees, so a
+            # bad count cannot spin this loop forever.
+            total = data.get("total_count") or 0
+            if not items or page * _PAGE_SIZE >= total:
                 break
             page += 1
 

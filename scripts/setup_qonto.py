@@ -55,7 +55,7 @@ def main():
         "response_type": "code",
         "client_id": config.QONTO_CLIENT_ID,
         "redirect_uri": _REDIRECT_URI,
-        "scope": "offline_access client_invoices.read",
+        "scope": config.QONTO_SCOPES,
     })
     auth_url = f"{_AUTH_URL}?{params}"
 

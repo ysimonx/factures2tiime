@@ -4,22 +4,22 @@ from pathlib import Path
 
 import requests
 
-import config
+from providers import qonto_base
 from providers.base import Invoice, InvoiceProvider, ProviderError
 
 log = logging.getLogger(__name__)
 
-_BASE = "https://thirdparty.qonto.com/v2"
+_BASE = qonto_base.BASE
 
 
 class QontoProvider(InvoiceProvider):
     name = "qonto"
 
     def is_enabled(self) -> bool:
-        return bool(config.QONTO_LOGIN and config.QONTO_SECRET_KEY)
+        return qonto_base.is_configured()
 
     def _headers(self) -> dict:
-        return {"Authorization": f"{config.QONTO_LOGIN}:{config.QONTO_SECRET_KEY}"}
+        return qonto_base.auth_headers()
 
     def list_invoices(self, since: date) -> list[Invoice]:
         invoices = []

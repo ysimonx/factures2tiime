@@ -97,6 +97,9 @@ What that means in practice:
 | Atlassian | Commerce API `/v1/invoices/{id}/download` | OAuth2 2LO (60min tokens) |
 | Free Mobile | Portal scraping | Playwright (opt-in) |
 | Starlink | Portal scraping + Gmail OTP | Playwright + Gmail API (opt-in) |
+| YouPrice | Portal scraping + Gmail OTP | Playwright + Gmail API (opt-in) |
+| Sosh (Orange) | Login via Playwright, then private REST API | Orange account (opt-in) |
+| Izivia / EDF b.s. | Gmail search + attachment | Gmail API OAuth2 (2nd mailbox) |
 | Starlink (mail) | Gmail search + attachment | Gmail API OAuth2 |
 | Google Workspace | Gmail search + attachment | Gmail API OAuth2 |
 | Alan | Gmail search + attachment | Gmail API OAuth2 |
@@ -104,6 +107,50 @@ What that means in practice:
 | Atlassian (mail) | Gmail search + attachment | Gmail API OAuth2 |
 | Mailjet | Gmail search + attachment | Gmail API OAuth2 |
 | Mistral | Gmail search + attachment | Gmail API OAuth2 |
+| Apple | Gmail search + **mail body → PDF** | Gmail API OAuth2 (2nd mailbox) |
+| Pokawa | IMAP search + **mail body → PDF** | IMAP login (opt-in) |
+| Qonto (client invoices) | REST `/v2/client_invoices` | API key or OAuth2 |
+| Qonto (receipts) | REST `/v2/transactions` + attachments, **photo → PDF** | API key or OAuth2 (opt-in) |
+
+### Receipts with no vendor at all
+
+Restaurants, taxis, one-off purchases have no API and send no invoice email —
+the only trace is the photo scanned into the bank. `qonto_attachments` walks
+completed debit transactions carrying an attachment and files each one.
+
+Three things that shape the code:
+
+- Attachment download URLs **expire after 30 minutes**, so the listing URL is
+  never stored; `fetch_pdf` re-resolves it immediately before downloading.
+- Qonto keeps a **probative copy** (`probative_attachment`) — the legally
+  certified one — which is preferred over the raw upload whenever present.
+- Those attachments are usually **photos, not PDFs**, and the mail pipeline only
+  ships PDFs, so images are wrapped via `mail_pdf.image_to_pdf()`.
+
+`QONTO_ATTACHMENTS_SKIP` drops merchants already covered by a dedicated provider,
+otherwise an OVH invoice filed in Qonto would reach the accountant twice.
+
+### Invoices that are not PDFs
+
+Some vendors never attach a document — the receipt *is* the email. Those go
+through `providers/mail_pdf.py`, which renders the mail body with headless
+Chromium and prepends a header (sender, subject, date) so the result stands on
+its own as a justificatif. A PDF attachment, when present, always wins.
+
+`providers/imap_base.py` is the IMAP counterpart of `gmail_base.py`, for invoice
+mailboxes that are not Gmail. Unlike the REST providers it fetches all matching
+messages in a single login and caches the bodies for the run.
+
+### Several mailboxes
+
+Gmail providers take an `account` argument naming their entry in the token
+store, so one Google account can hold the pro invoices while another holds the
+personal ones. Authorize each one separately:
+
+```bash
+python scripts/setup_gmail.py                              # main mailbox
+python scripts/setup_gmail.py --account gmail_perso --email <address>
+```
 
 ---
 

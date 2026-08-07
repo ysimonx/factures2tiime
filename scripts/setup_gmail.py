@@ -2,11 +2,13 @@
 from __future__ import annotations
 """
 One-time Gmail OAuth2 authorization_code flow.
-Run this once to store the refresh token in the local SQLite database.
-The token is used to read Starlink OTP codes from yannick.simon@kysoe.com.
+Run this once per mailbox to store the refresh token in the local SQLite database.
+The main account is used for Starlink/YouPrice OTP codes and the pro invoices;
+a secondary account holds personal invoices (Apple receipts…).
 
 Usage:
-  python scripts/setup_gmail.py
+  python scripts/setup_gmail.py                        # main account ("gmail")
+  python scripts/setup_gmail.py --account gmail_perso  # secondary mailbox
 
 Prerequisites:
   1. Go to Google Cloud Console → APIs & Services → Credentials
@@ -14,6 +16,7 @@ Prerequisites:
   3. Enable the Gmail API for the project
   4. Set GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET in .env
 """
+import argparse
 import sys
 import threading
 import webbrowser
@@ -53,12 +56,26 @@ class _CallbackHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Authorize a Gmail mailbox")
+    parser.add_argument(
+        "--account",
+        default="gmail",
+        help='Token store key for this mailbox (default: "gmail")',
+    )
+    parser.add_argument(
+        "--email",
+        default=None,
+        help="Address to pre-fill on the Google consent screen",
+    )
+    args = parser.parse_args()
+
     if not config.GMAIL_CLIENT_ID or not config.GMAIL_CLIENT_SECRET:
         print("Error: GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET must be set in .env")
         sys.exit(1)
 
     storage.init_db()
 
+    login_hint = args.email or (config.STARLINK_EMAIL if args.account == "gmail" else "")
     params = urlencode({
         "response_type": "code",
         "client_id": config.GMAIL_CLIENT_ID,
@@ -66,7 +83,7 @@ def main():
         "scope": _SCOPE,
         "access_type": "offline",
         "prompt": "consent",
-        "login_hint": config.STARLINK_EMAIL or "",
+        "login_hint": login_hint or "",
     })
     auth_url = f"{_AUTH_URL}?{params}"
 
@@ -74,7 +91,8 @@ def main():
     thread = threading.Thread(target=server.handle_request)
     thread.start()
 
-    print(f"\nOpening browser for Gmail authorization ({config.STARLINK_EMAIL})…")
+    print(f"\nOpening browser for Gmail authorization "
+          f"(account={args.account}, {login_hint or 'choose in browser'})…")
     print(f"URL: {auth_url}\n")
     webbrowser.open(auth_url)
     thread.join(timeout=120)
@@ -99,13 +117,13 @@ def main():
 
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=payload.get("expires_in", 3600))
     token_store.save(
-        provider="gmail",
+        provider=args.account,
         access_token=payload["access_token"],
         refresh_token=payload.get("refresh_token"),
         expires_at=expires_at,
         scope=payload.get("scope"),
     )
-    print("Gmail tokens stored successfully.")
+    print(f"Gmail tokens stored successfully for account '{args.account}'.")
 
 
 if __name__ == "__main__":

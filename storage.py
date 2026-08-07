@@ -98,6 +98,15 @@ def update_pdf_path(inv: Invoice) -> None:
         )
 
 
+def update_amount(inv: Invoice) -> None:
+    """Persist an amount discovered after the row was recorded (read from the PDF)."""
+    with db_cursor() as cur:
+        cur.execute(
+            "UPDATE sent_invoices SET amount=? WHERE provider=? AND invoice_id=?",
+            (inv.amount, inv.provider, inv.invoice_id),
+        )
+
+
 def mark_sent(inv: Invoice, email_to: str) -> None:
     with db_cursor() as cur:
         cur.execute(

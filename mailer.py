@@ -22,19 +22,32 @@ def send_invoice(inv: Invoice) -> None:
         raise ValueError(f"PDF not found for {inv.provider}/{inv.invoice_id}")
 
     pdf_bytes = Path(inv.pdf_path).read_bytes()
+    # A failed download can leave an HTML error page under a .pdf name, and it
+    # has already reached the accountant once. Refuse rather than forward it:
+    # the provider is reported as failing and the invoice stays uncollected.
+    if not pdf_bytes.startswith(b"%PDF"):
+        raise ValueError(
+            f"{inv.pdf_path} is not a PDF ({pdf_bytes[:16]!r}) — "
+            f"download for {inv.provider}/{inv.invoice_id} likely failed"
+        )
     pdf_b64 = base64.b64encode(pdf_bytes).decode()
     filename = Path(inv.pdf_path).name
 
-    subject = (
-        f"[{inv.provider.upper()}] Facture {inv.issue_date.strftime('%Y-%m')}"
-        f" — {inv.amount:.2f} {inv.currency}"
-    )
+    # An unknown amount is left out entirely: printing "0.00 EUR" would state a
+    # figure that is simply wrong, and the attached PDF carries the real one.
+    subject = f"[{inv.provider.upper()}] Facture {inv.issue_date.strftime('%Y-%m')}"
+    if inv.amount:
+        subject += f" — {inv.amount:.2f} {inv.currency}"
+
     body = (
         f"Fournisseur : {inv.provider}\n"
         f"Référence   : {inv.invoice_id}\n"
         f"Date        : {inv.issue_date}\n"
-        f"Montant     : {inv.amount:.2f} {inv.currency}\n"
     )
+    if inv.amount:
+        body += f"Montant     : {inv.amount:.2f} {inv.currency}\n"
+    else:
+        body += "Montant     : non déterminé — voir le PDF joint\n"
 
     data = {
         "Messages": [

@@ -4,7 +4,7 @@ from datetime import date, timedelta
 import config
 import mailer
 import storage
-from providers import get_enabled_providers
+from providers import get_enabled_providers, pdf_amount
 from providers.base import ProviderError
 
 log = logging.getLogger(__name__)
@@ -36,6 +36,12 @@ def run_collection() -> None:
 
                 provider.fetch_pdf(inv, dest)
                 storage.update_pdf_path(inv)
+
+                # Providers that only forward an attachment know no amount; the
+                # figure exists solely inside the PDF, so read it once it is on
+                # disk. Providers fed by an API keep their own value.
+                if pdf_amount.fill_amount(inv):
+                    storage.update_amount(inv)
 
                 mailer.send_invoice(inv)
                 storage.mark_sent(inv, config.TIIME_EMAIL)

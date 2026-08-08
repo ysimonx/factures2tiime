@@ -35,7 +35,12 @@ def send_invoice(inv: Invoice) -> None:
 
     # An unknown amount is left out entirely: printing "0.00 EUR" would state a
     # figure that is simply wrong, and the attached PDF carries the real one.
-    subject = f"[{inv.provider.upper()}] Facture {inv.issue_date.strftime('%Y-%m')}"
+    # A label means one specific expense (a receipt), so the exact day matters;
+    # without one the invoice covers a month and YYYY-MM is the honest date.
+    if inv.label:
+        subject = f"[{inv.provider.upper()}] {inv.label} — {inv.issue_date.isoformat()}"
+    else:
+        subject = f"[{inv.provider.upper()}] Facture {inv.issue_date.strftime('%Y-%m')}"
     if inv.amount:
         subject += f" — {inv.amount:.2f} {inv.currency}"
 
@@ -48,6 +53,8 @@ def send_invoice(inv: Invoice) -> None:
         body += f"Montant     : {inv.amount:.2f} {inv.currency}\n"
     else:
         body += "Montant     : non déterminé — voir le PDF joint\n"
+    for key, value in inv.details.items():
+        body += f"{key:<12}: {value}\n"
 
     data = {
         "Messages": [

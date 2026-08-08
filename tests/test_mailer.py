@@ -63,6 +63,48 @@ def test_send_invoice_raises_on_mailjet_error(tmp_path):
             mailer.send_invoice(inv)
 
 
+def test_labelled_invoice_gets_merchant_and_exact_date_in_subject(tmp_path):
+    inv = _invoice(tmp_path)
+    inv.provider = "qonto_attachments"
+    inv.label = "Le Petit Bistrot"
+    inv.details = {"Paiement": "Carte ****4321", "TVA": "1.37 EUR (10 %)"}
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_send = MagicMock()
+    mock_send.create.return_value = mock_response
+    mock_client = MagicMock()
+    mock_client.send = mock_send
+
+    with patch("mailer._client", return_value=mock_client):
+        import mailer
+        mailer.send_invoice(inv)
+
+    msg = mock_send.create.call_args[1]["data"]["Messages"][0]
+    assert msg["Subject"] == (
+        "[QONTO_ATTACHMENTS] Le Petit Bistrot — 2026-03-01 — 42.00 EUR"
+    )
+    assert "Paiement    : Carte ****4321\n" in msg["TextPart"]
+    assert "TVA         : 1.37 EUR (10 %)\n" in msg["TextPart"]
+
+
+def test_unlabelled_invoice_keeps_the_monthly_subject(tmp_path):
+    inv = _invoice(tmp_path)  # no label: the historical subject format
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_send = MagicMock()
+    mock_send.create.return_value = mock_response
+    mock_client = MagicMock()
+    mock_client.send = mock_send
+
+    with patch("mailer._client", return_value=mock_client):
+        import mailer
+        mailer.send_invoice(inv)
+
+    msg = mock_send.create.call_args[1]["data"]["Messages"][0]
+    assert msg["Subject"] == "[OVH] Facture 2026-03 — 42.00 EUR"
+
+
 def test_send_invoice_raises_when_no_pdf():
     inv = Invoice(
         provider="ovh",

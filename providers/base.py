@@ -16,6 +16,11 @@ class Invoice:
     pdf_url: str | None
     pdf_path: Path | None
     raw: dict = field(default_factory=dict)
+    # Human-facing context for the accountant, rendered into the outgoing mail:
+    # `label` names the expense in the subject (merchant, plan…), `details` adds
+    # "key: value" lines to the body (VAT, payment method, transaction ref…).
+    label: str | None = None
+    details: dict[str, str] = field(default_factory=dict)
 
 
 class InvoiceProvider(ABC):

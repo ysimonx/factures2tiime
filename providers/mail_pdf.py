@@ -31,14 +31,25 @@ _HEADER_CSS = """
 """
 
 
-def build_header(sender: str, subject: str, issue_date: date) -> str:
-    return (
+def build_header(
+    sender: str,
+    subject: str,
+    issue_date: date,
+    extra: dict[str, str] | None = None,
+) -> str:
+    header = (
         '<div class="f2t-header">'
         f'<div class="f2t-subject">{html_lib.escape(subject or "(sans objet)")}</div>'
         f'<div class="f2t-meta"><span>De :</span> {html_lib.escape(sender)}'
         f' &nbsp;·&nbsp; <span>Date :</span> {issue_date.isoformat()}</div>'
-        "</div>"
     )
+    if extra:
+        pairs = " &nbsp;·&nbsp; ".join(
+            f"<span>{html_lib.escape(k)} :</span> {html_lib.escape(v)}"
+            for k, v in extra.items()
+        )
+        header += f'<div class="f2t-meta">{pairs}</div>'
+    return header + "</div>"
 
 
 def wrap_html(body_html: str, sender: str, subject: str, issue_date: date) -> str:
@@ -92,6 +103,7 @@ def image_to_pdf(
     source: str,
     subject: str,
     issue_date: date,
+    extra: dict[str, str] | None = None,
 ) -> Path:
     """Wrap a scanned/photographed receipt into a one-page PDF.
 
@@ -105,7 +117,7 @@ def image_to_pdf(
         f"{_HEADER_CSS}"
         "<style>.f2t-scan{max-width:100%;max-height:235mm;"
         "display:block;margin:0 auto;}</style></head><body>"
-        f"{build_header(source, subject, issue_date)}"
+        f"{build_header(source, subject, issue_date, extra)}"
         f"<img class='f2t-scan' src='data:{mime};base64,{encoded}'/>"
         "</body></html>"
     )

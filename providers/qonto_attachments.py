@@ -66,6 +66,8 @@ class QontoAttachmentsProvider(InvoiceProvider):
                         "merchant": merchant,
                         "file_name": att.get("file_name"),
                     },
+                    label=merchant or None,
+                    details=_details(tx, merchant),
                 ))
 
         if skipped:
@@ -109,8 +111,17 @@ class QontoAttachmentsProvider(InvoiceProvider):
             dest.parent.mkdir(parents=True, exist_ok=True)
 
             if content.startswith(b"%PDF"):
+                # Never touched: the probative copy is legally certified, and a
+                # cover page could also throw off Tiime's OCR. The transaction
+                # context travels in the mail subject/body instead.
                 dest.write_bytes(content)
             elif content_type.startswith("image/") or _looks_like_image(content):
+                # The merchant is already in the header's source line
+                extra = {"Montant": f"{invoice.amount:.2f} {invoice.currency}"} \
+                    if invoice.amount else {}
+                extra.update(
+                    (k, v) for k, v in invoice.details.items() if k != "Marchand"
+                )
                 mail_pdf.image_to_pdf(
                     content,
                     content_type or "image/jpeg",
@@ -118,6 +129,7 @@ class QontoAttachmentsProvider(InvoiceProvider):
                     source=f"Qonto — {merchant}",
                     subject=invoice.raw.get("file_name") or "Justificatif",
                     issue_date=invoice.issue_date,
+                    extra=extra or None,
                 )
             else:
                 raise RuntimeError(
@@ -135,9 +147,77 @@ class QontoAttachmentsProvider(InvoiceProvider):
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
+_OPERATION_LABELS = {
+    "card": "Carte",
+    "transfer": "Virement",
+    "direct_debit": "Prélèvement",
+    "qonto_fee": "Frais Qonto",
+    "cheque": "Chèque",
+}
+
 
 def _merchant(tx: dict) -> str:
     return (tx.get("clean_counterparty_name") or tx.get("label") or "").strip()
+
+
+def _details(tx: dict, merchant: str) -> dict[str, str]:
+    """Transaction context worth forwarding to the accountant.
+
+    Everything here is already in the listing response — no extra API call.
+    Keys are the French labels printed verbatim in the mail body.
+    """
+    details: dict[str, str] = {}
+    if merchant:
+        details["Marchand"] = merchant
+    if tx.get("transaction_id"):
+        details["Transaction"] = str(tx["transaction_id"])
+    if payment := _payment(tx):
+        details["Paiement"] = payment
+    if vat := _vat(tx):
+        details["TVA"] = vat
+    # The raw bank label (e.g. "POKAWA 13480 CABRIES CB") is what appears on
+    # the statement — keep it when the cleaned merchant name replaced it.
+    raw_label = (tx.get("label") or "").strip()
+    if raw_label and raw_label != merchant:
+        details["Libellé"] = raw_label
+    if note := (tx.get("note") or "").strip():
+        details["Note"] = note
+    if category := (tx.get("category") or "").strip():
+        details["Catégorie"] = category.replace("_", " ")
+    # Foreign-currency purchase: the receipt shows an amount the EUR debit
+    # won't match — spell out the original one.
+    local_currency = tx.get("local_currency")
+    if (
+        local_currency
+        and local_currency != (tx.get("currency") or "EUR")
+        and tx.get("local_amount")
+    ):
+        details["Montant local"] = (
+            f"{abs(float(tx['local_amount'])):.2f} {local_currency}"
+        )
+    return details
+
+
+def _payment(tx: dict) -> str | None:
+    operation = tx.get("operation_type")
+    if not operation:
+        return None
+    label = _OPERATION_LABELS.get(operation, operation)
+    if operation == "card" and (digits := tx.get("card_last_digits")):
+        label += f" ****{digits}"
+    return label
+
+
+def _vat(tx: dict) -> str | None:
+    amount = tx.get("vat_amount")
+    if not amount:
+        return None
+    text = f"{abs(float(amount)):.2f} {tx.get('currency') or 'EUR'}"
+    rate = tx.get("vat_rate")
+    # Qonto uses -1 for "multiple rates" — the amount alone is still right
+    if rate and float(rate) > 0:
+        text += f" ({float(rate):g} %)"
+    return text
 
 
 def _is_covered_elsewhere(merchant: str) -> bool:

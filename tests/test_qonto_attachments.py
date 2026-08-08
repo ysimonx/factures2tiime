@@ -6,11 +6,14 @@ import pytest
 import config
 from providers.qonto_attachments import (
     QontoAttachmentsProvider,
+    _details,
     _is_covered_elsewhere,
     _looks_like_image,
     _merchant,
+    _payment,
     _settled_date,
     _slug,
+    _vat,
 )
 
 
@@ -149,3 +152,79 @@ def test_slug_is_bounded():
 ])
 def test_image_sniffing(content, is_image):
     assert _looks_like_image(content) is is_image
+
+
+# ── Transaction context forwarded to the accountant ────────────────────────
+
+
+def test_invoices_carry_the_merchant_and_transaction_details(monkeypatch):
+    tx = _tx("tx-1", "Le Petit Bistrot", ["att-1"])
+    tx.update(
+        transaction_id="acme-corp-1234",
+        operation_type="card",
+        card_last_digits="4321",
+        vat_amount=1.37,
+        vat_rate=10.0,
+    )
+    monkeypatch.setattr(
+        "providers.qonto_base.list_transactions_with_attachments",
+        lambda since: [tx],
+    )
+    (inv,) = QontoAttachmentsProvider().list_invoices(date(2026, 1, 1))
+    assert inv.label == "Le Petit Bistrot"
+    assert inv.details["Marchand"] == "Le Petit Bistrot"
+    assert inv.details["Transaction"] == "acme-corp-1234"
+    assert inv.details["Paiement"] == "Carte ****4321"
+    assert inv.details["TVA"] == "1.37 EUR (10 %)"
+
+
+def test_details_keep_the_raw_statement_label_when_cleaned(monkeypatch):
+    tx = {
+        "clean_counterparty_name": "Pokawa",
+        "label": "POKAWA 13480 CABRIES CB",
+        "note": "déjeuner client",
+        "category": "restaurant_and_bar",
+    }
+    details = _details(tx, _merchant(tx))
+    assert details["Libellé"] == "POKAWA 13480 CABRIES CB"
+    assert details["Note"] == "déjeuner client"
+    assert details["Catégorie"] == "restaurant and bar"
+
+
+def test_details_omit_a_label_identical_to_the_merchant():
+    tx = {"label": "LE PETIT BISTROT"}
+    assert "Libellé" not in _details(tx, "LE PETIT BISTROT")
+
+
+def test_details_spell_out_a_foreign_currency_amount():
+    tx = {"currency": "EUR", "local_currency": "USD", "local_amount": -12.5}
+    assert _details(tx, "")["Montant local"] == "12.50 USD"
+
+
+def test_details_skip_local_amount_in_the_billing_currency():
+    tx = {"currency": "EUR", "local_currency": "EUR", "local_amount": 8.2}
+    assert "Montant local" not in _details(tx, "")
+
+
+@pytest.mark.parametrize("tx,expected", [
+    ({"operation_type": "card", "card_last_digits": "1234"}, "Carte ****1234"),
+    ({"operation_type": "card"}, "Carte"),
+    ({"operation_type": "transfer"}, "Virement"),
+    ({"operation_type": "direct_debit"}, "Prélèvement"),
+    ({"operation_type": "pagopa_payment"}, "pagopa_payment"),  # unknown: as-is
+    ({}, None),
+])
+def test_payment_label(tx, expected):
+    assert _payment(tx) == expected
+
+
+@pytest.mark.parametrize("tx,expected", [
+    ({"vat_amount": 8.33, "vat_rate": 20.0, "currency": "EUR"}, "8.33 EUR (20 %)"),
+    # -1 means several rates on one receipt — the total is still exact
+    ({"vat_amount": 3.10, "vat_rate": -1, "currency": "EUR"}, "3.10 EUR"),
+    ({"vat_amount": -1.37, "vat_rate": 10.0, "currency": "EUR"}, "1.37 EUR (10 %)"),
+    ({"vat_amount": None}, None),
+    ({}, None),
+])
+def test_vat_formatting(tx, expected):
+    assert _vat(tx) == expected

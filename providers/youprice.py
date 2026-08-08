@@ -69,6 +69,11 @@ class YoupriceProvider(InvoiceProvider):
             ctx = browser.new_context(user_agent=_UA)
             page = ctx.new_page()
             try:
+                # OTP filter anchor: accept any code arriving after this attempt
+                # began. Gmail can index the email under the *sender's* Date
+                # header, and YouPrice's clock runs ~15s behind — anchoring at
+                # click time with a 10s buffer rejected codes at the boundary.
+                attempt_epoch = int(time.time()) - 30
                 page.goto(_LOGIN_URL, wait_until="domcontentloaded", timeout=30000)
                 self._dismiss_cookies(page)
 
@@ -81,10 +86,8 @@ class YoupriceProvider(InvoiceProvider):
                 page.fill(_EMAIL_INPUT, config.YOUPRICE_USER)
                 page.fill(_PASSWORD_INPUT, config.YOUPRICE_PASS)
 
-                # Buffer for the delivery delay between submit and the code landing
-                submit_epoch = int(time.time()) - 10
                 page.click(_SUBMIT)
-                self._pass_otp(page, submit_epoch)
+                self._pass_otp(page, attempt_epoch)
 
                 page.wait_for_load_state("networkidle", timeout=30000)
                 raw = page.evaluate("() => window.localStorage.getItem('user_token')")
@@ -96,7 +99,7 @@ class YoupriceProvider(InvoiceProvider):
             finally:
                 browser.close()
 
-    def _pass_otp(self, page, submit_epoch: int) -> None:
+    def _pass_otp(self, page, attempt_epoch: int) -> None:
         from oauth2.gmail_otp import get_youprice_otp
 
         try:
@@ -106,7 +109,7 @@ class YoupriceProvider(InvoiceProvider):
             return
 
         log.info("YouPrice: OTP required, fetching from Gmail…")
-        page.fill(_OTP_INPUT, get_youprice_otp(after_epoch=submit_epoch, max_wait=120))
+        page.fill(_OTP_INPUT, get_youprice_otp(after_epoch=attempt_epoch, max_wait=120))
         page.click(_OTP_SUBMIT)
         try:
             page.wait_for_selector(_OTP_MODAL, state="detached", timeout=30000)

@@ -50,8 +50,13 @@ def get_otp(
     )
 
     deadline = time.time() + max_wait
+    seen: set[str] = set()
     while time.time() < deadline:
-        code = _try_get_otp(access_token, after_epoch, sender, pattern)
+        try:
+            code = _try_get_otp(access_token, after_epoch, sender, pattern, seen)
+        except requests.RequestException as e:
+            log.warning("%s: Gmail poll failed (%s), retrying…", label, e)
+            code = None
         if code:
             log.debug("%s found: %s", label, code)
             return code
@@ -92,22 +97,25 @@ def get_youprice_otp(
 
 
 def _try_get_otp(
-    access_token: str, after_epoch: int, sender: str, pattern: str
+    access_token: str, after_epoch: int, sender: str, pattern: str,
+    seen: set[str],
 ) -> str | None:
     headers = {"Authorization": f"Bearer {access_token}"}
-    # newer_than:5m gets recent emails; we filter precisely by internalDate below
+    # Deliberately no `q=` search: Gmail's search index can lag several minutes
+    # behind delivery, which starves a two-minute OTP window (bitten by YouPrice
+    # on 2026-08-08). A plain recency listing sees new mail immediately; the
+    # sender is filtered client-side on the From header instead.
     resp = requests.get(
         f"{_GMAIL_API}/messages",
         headers=headers,
-        params={"q": f"from:{sender} newer_than:5m", "maxResults": 10},
+        params={"maxResults": 20, "includeSpamTrash": "true"},
         timeout=15,
     )
     resp.raise_for_status()
-    messages = resp.json().get("messages", [])
-    if not messages:
-        return None
 
-    for msg_ref in messages:
+    for msg_ref in resp.json().get("messages", []):
+        if msg_ref["id"] in seen:
+            continue
         msg_resp = requests.get(
             f"{_GMAIL_API}/messages/{msg_ref['id']}",
             headers=headers,
@@ -116,9 +124,14 @@ def _try_get_otp(
         )
         msg_resp.raise_for_status()
         msg = msg_resp.json()
+        # Remember only successfully fetched messages, so a failed fetch is
+        # retried on the next poll
+        seen.add(msg_ref["id"])
 
         # internalDate is milliseconds since epoch — skip emails older than sign-in
         if int(msg.get("internalDate", 0)) / 1000 < after_epoch:
+            continue
+        if sender.lower() not in _from_header(msg).lower():
             continue
 
         code = _extract_code(_extract_body(msg), pattern)
@@ -126,6 +139,13 @@ def _try_get_otp(
             return code
 
     return None
+
+
+def _from_header(msg: dict) -> str:
+    for h in msg.get("payload", {}).get("headers", []):
+        if h.get("name", "").lower() == "from":
+            return h.get("value") or ""
+    return ""
 
 
 def _extract_body(msg: dict) -> str:

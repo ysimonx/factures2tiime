@@ -32,6 +32,10 @@ _UA = (
 
 _CONSENT = "#didomi-notice-disagree-button"
 _LOGIN_INPUT = "input#login"
+# Depending on the network the request comes from, Orange may replace the
+# identifier form with a chooser listing the accounts it recognises
+_ACCOUNT_CHOICE = "[data-testid='choose-account-{login}']"
+_OTHER_ACCOUNT = "[data-testid='input-other-account']"
 _PASSWORD_INPUT = "input[type='password']"
 _SUBMIT = "button[type='submit']"
 # Orange emails a 6-digit code when it does not recognise the browser
@@ -93,6 +97,10 @@ class SoshProvider(InvoiceProvider):
                 return
 
     def _login(self, page) -> None:
+        # OTP filter anchor: accept any code arriving after this attempt began.
+        # Gmail can index the email under the *sender's* Date header, whose
+        # clock may lag — anchoring at click time rejected codes at the boundary.
+        attempt_epoch = int(time.time()) - 30
         page.goto(_HOME_URL, wait_until="domcontentloaded", timeout=45000)
         page.wait_for_timeout(2500)
         if "login.orange.fr" not in page.url:
@@ -100,13 +108,7 @@ class SoshProvider(InvoiceProvider):
             return
 
         self._dismiss_consent(page)
-        try:
-            page.wait_for_selector(_LOGIN_INPUT, timeout=20000)
-        except Exception:
-            self._dump_debug(page, "no-login-form")
-            raise
-        page.fill(_LOGIN_INPUT, config.SOSH_USER)
-        page.click(_SUBMIT)
+        self._submit_identifier(page)
 
         # Step two is rendered only once the identifier is accepted
         try:
@@ -117,12 +119,11 @@ class SoshProvider(InvoiceProvider):
                 "Orange did not ask for a password — identifier refused, "
                 "or a captcha is in the way (see the dump)"
             )
-        submit_epoch = int(time.time()) - 10
         page.fill(_PASSWORD_INPUT, config.SOSH_PASS)
         page.click(_SUBMIT)
         page.wait_for_timeout(4000)
 
-        self._pass_otp(page, submit_epoch)
+        self._pass_otp(page, attempt_epoch)
         self._decline_interstitials(page)
 
         if "login.orange.fr" in page.url:
@@ -130,7 +131,36 @@ class SoshProvider(InvoiceProvider):
             raise RuntimeError("Still on the login page after submitting credentials")
         log.info("Sosh: logged in")
 
-    def _pass_otp(self, page, submit_epoch: int) -> None:
+    def _submit_identifier(self, page) -> None:
+        """First step: hand the account identifier to Orange.
+
+        Two possible screens: the plain identifier form, or an account chooser
+        ("Choisissez l'identifiant pour accéder à votre compte") when Orange
+        recognises returning accounts. Whichever shows up first wins.
+        """
+        choice = _ACCOUNT_CHOICE.format(login=config.SOSH_USER)
+        try:
+            page.wait_for_selector(
+                f"{choice}, {_OTHER_ACCOUNT}, {_LOGIN_INPUT}", timeout=20000
+            )
+        except Exception:
+            self._dump_debug(page, "no-login-form")
+            raise
+
+        if page.query_selector(choice):
+            log.info("Sosh: account chooser shown, picking %s", config.SOSH_USER)
+            page.click(choice)
+            return
+        if page.query_selector(_OTHER_ACCOUNT):
+            # Chooser shown, but the wanted account is not in its list
+            log.info("Sosh: account chooser without %s, entering it manually",
+                     config.SOSH_USER)
+            page.click(_OTHER_ACCOUNT)
+            page.wait_for_selector(_LOGIN_INPUT, timeout=20000)
+        page.fill(_LOGIN_INPUT, config.SOSH_USER)
+        page.click(_SUBMIT)
+
+    def _pass_otp(self, page, attempt_epoch: int) -> None:
         """Orange emails a code when the browser is unknown — read it from Gmail."""
         if not page.query_selector(_OTP_INPUT):
             return
@@ -139,7 +169,7 @@ class SoshProvider(InvoiceProvider):
         log.info("Sosh: verification code required, fetching from Gmail…")
         page.fill(_OTP_INPUT, get_otp(
             _OTP_SENDER, pattern=DIGITS_6, label="Orange OTP",
-            after_epoch=submit_epoch, max_wait=120,
+            after_epoch=attempt_epoch, max_wait=120,
         ))
         page.click(_SUBMIT)
         page.wait_for_timeout(4000)

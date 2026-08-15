@@ -12,6 +12,18 @@ class OAuthExpiredError(Exception):
     """Raised when the refresh token has expired and re-authorization is needed."""
 
 
+def _setup_hint(provider: str) -> str:
+    """The exact command that (re)creates the stored token for this alias.
+
+    Every Gmail mailbox alias (gmail, gmail_perso, …) goes through the single
+    setup_gmail.py script — naming setup_<alias>.py would point at a file that
+    does not exist.
+    """
+    if provider == "qonto":
+        return "python scripts/setup_qonto.py"
+    return f"python scripts/setup_gmail.py --account {provider}"
+
+
 def get_valid_token(
     provider: str,
     token_url: str,
@@ -27,7 +39,7 @@ def get_valid_token(
     if not data:
         raise OAuthExpiredError(
             f"No stored token for {provider}. "
-            f"Run scripts/setup_{provider}.py to authorize."
+            f"Authorize with: {_setup_hint(provider)}"
         )
 
     if not token_store.is_expired(data):
@@ -54,7 +66,7 @@ def get_valid_token(
         if e.response is not None and e.response.status_code in (400, 401):
             raise OAuthExpiredError(
                 f"Refresh token expired for {provider}. "
-                f"Re-run scripts/setup_{provider}.py to re-authorize."
+                f"Re-authorize with: {_setup_hint(provider)}"
             ) from e
         raise
 

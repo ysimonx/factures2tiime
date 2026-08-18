@@ -100,6 +100,7 @@ What that means in practice:
 | YouPrice | Portal scraping + Gmail OTP | Playwright + Gmail API (opt-in) |
 | Sosh (Orange) | Login via Playwright, then private REST API | Orange account (opt-in) |
 | Izivia / EDF b.s. | Gmail search + attachment | Gmail API OAuth2 (2nd mailbox) |
+| GitHub | Gmail search + attachment (USD) | Gmail API OAuth2 (2nd mailbox, opt-in) |
 | Starlink (mail) | Gmail search + attachment | Gmail API OAuth2 |
 | Google Workspace | Gmail search + attachment | Gmail API OAuth2 |
 | Alan | Gmail search + attachment | Gmail API OAuth2 |

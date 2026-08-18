@@ -17,6 +17,7 @@ def get_enabled_providers() -> list[InvoiceProvider]:
     from providers.certigna_mail import CertignaMailProvider
     from providers.clockify_mail import ClockifyMailProvider
     from providers.apple_mail import AppleMailProvider
+    from providers.github_mail import GithubMailProvider
     from providers.izivia_mail import IziviaMailProvider
     from providers.pokawa_mail import PokawaMailProvider
     from providers.stubs import (
@@ -40,6 +41,7 @@ def get_enabled_providers() -> list[InvoiceProvider]:
         CertignaMailProvider(),
         ClockifyMailProvider(),
         AppleMailProvider(),
+        GithubMailProvider(),
         IziviaMailProvider(),
         PokawaMailProvider(),
         GoogleWorkspaceStub(),

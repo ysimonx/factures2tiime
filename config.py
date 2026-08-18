@@ -63,7 +63,8 @@ QONTO_ATTACHMENTS_SKIP = [
     for s in os.getenv(
         "QONTO_ATTACHMENTS_SKIP",
         "ovh,scaleway,microsoft,google,atlassian,infomaniak,alan,mailjet,"
-        "anthropic,mistral,certigna,clockify,starlink,youprice,apple,pokawa",
+        "anthropic,mistral,certigna,clockify,starlink,youprice,apple,pokawa,"
+        "github",
     ).split(",")
     if s.strip()
 ]
@@ -105,6 +106,9 @@ APPLE_MAIL_ENABLED = os.getenv("APPLE_MAIL_ENABLED", "false").lower() == "true"
 
 # ─── Izivia / EDF business services (boîte Gmail perso) ───
 IZIVIA_MAIL_ENABLED = os.getenv("IZIVIA_MAIL_ENABLED", "false").lower() == "true"
+
+# ─── GitHub (reçus de paiement sur la boîte Gmail perso, PDF joint) ───
+GITHUB_MAIL_ENABLED = os.getenv("GITHUB_MAIL_ENABLED", "false").lower() == "true"
 
 # ─── Playwright providers ───
 FREE_MOBILE_ENABLED = os.getenv("FREE_MOBILE_ENABLED", "false").lower() == "true"

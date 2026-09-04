@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS oauth2_tokens (
     refresh_token   TEXT,
     expires_at      TEXT,
     scope           TEXT,
+    account_email   TEXT,
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
@@ -54,6 +55,15 @@ def init_db() -> None:
     config.PDF_DIR.mkdir(parents=True, exist_ok=True)
     with db_cursor() as cur:
         cur.executescript(_SCHEMA)
+        _migrate(cur)
+
+
+def _migrate(cur) -> None:
+    """Bring an existing database up to the current schema."""
+    cur.execute("PRAGMA table_info(oauth2_tokens)")
+    columns = {row["name"] for row in cur.fetchall()}
+    if "account_email" not in columns:
+        cur.execute("ALTER TABLE oauth2_tokens ADD COLUMN account_email TEXT")
 
 
 @contextmanager

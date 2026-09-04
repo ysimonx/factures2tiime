@@ -12,16 +12,21 @@ class OAuthExpiredError(Exception):
     """Raised when the refresh token has expired and re-authorization is needed."""
 
 
-def _setup_hint(provider: str) -> str:
+def _setup_hint(provider: str, account_email: str | None = None) -> str:
     """The exact command that (re)creates the stored token for this alias.
 
     Every Gmail mailbox alias (gmail, gmail_perso, …) goes through the single
     setup_gmail.py script — naming setup_<alias>.py would point at a file that
-    does not exist.
+    does not exist. The alias says nothing about which mailbox is behind it, so
+    the known address is spelled out: re-authorizing the wrong Google account is
+    the easy mistake to make here.
     """
     if provider == "qonto":
         return "python scripts/setup_qonto.py"
-    return f"python scripts/setup_gmail.py --account {provider}"
+    hint = f"python scripts/setup_gmail.py --account {provider}"
+    if account_email:
+        hint += f" --email {account_email}"
+    return hint
 
 
 def get_valid_token(
@@ -65,8 +70,9 @@ def get_valid_token(
     except requests.HTTPError as e:
         if e.response is not None and e.response.status_code in (400, 401):
             raise OAuthExpiredError(
-                f"Refresh token expired for {provider}. "
-                f"Re-authorize with: {_setup_hint(provider)}"
+                f"Refresh token expired for {provider}"
+                f"{' (' + data['account_email'] + ')' if data.get('account_email') else ''}. "
+                f"Re-authorize with: {_setup_hint(provider, data.get('account_email'))}"
             ) from e
         raise
 

@@ -330,6 +330,10 @@ This project is proof that a single developer, working with the right AI tools, 
 
 ---
 
+## Author
+
+Yannick Simon, a French engineer (Arts et Métiers), fractional CTO and AI-assisted developer, based near Aix-en-Provence: [yannicksimon.fr](https://yannicksimon.fr/). This project as a use case, with a short video (in French): [Claude dans une TPE : un robot de factures fournisseurs](https://yannicksimon.fr/cas-d-usage/robot-de-factures/).
+
 ## License
 
 MIT
